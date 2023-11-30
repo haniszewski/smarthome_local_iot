@@ -9,20 +9,25 @@ const char *master_host = "";
 const short master_port = 12023;
 
 //Master asks for ID, HWID
-#define REQUEST_WHO 0b10110011
+#define HWID 0x0002
 
-//Master commands
-#define REQUEST_STATUS 0b11010011
-#define REQUEST_PING 0b11111111
+// Messages
+#define KEEPALIVE 0x0000
+#define KEEPALIVE_ACK 0x0001
 
-//Response codes
-//HWID, Hardware ID response
-#define RESPONSE_WHO 0b00000001
-//Last byte transmited from device
-#define RESPONSE_ACKNOWLEDGED 0b00000001
+#define WHO_REQUEST 0x0002
+#define WHO_RESPONSE 0x0003
 
-//Response about temp, 8 bits, 8 bits
+#define STATUS_REQUEST 0x0004
+#define STATUS_RESPONSE 0x0005
 
+// Most likely to have length 10
+// Temperature param
+// bytes 0 - header (0x80)
+// bytes 1 - 2 type
+// bytes 3 - 4 length
+// bytes 5 - id of sensor
+// bytes 6 - 9 - sensor data (humi/temp)
 
 #define DHTPIN 5
 
@@ -34,7 +39,7 @@ const short master_port = 12023;
 unsigned long previousMillis = 0;    // will store last time DHT was updated
 
 // Updates DHT readings every 30 seconds
-const long interval = 30000; 
+const long interval = 10000; 
 
 float temp = 0.0;
 float humi = 0.0;
@@ -70,48 +75,69 @@ void initConnection(){
   wClient.connect(master_host,master_port);
 }
 
-void loadtemp(uint8_t* resp_buff){
-  uint8_t* bytestemp;
-  bytestemp = new uint8_t[4];
-  *bytestemp = temp;
-  resp_buff[0] = bytestemp[0];
-  resp_buff[1] = bytestemp[1];
-  resp_buff[2] = bytestemp[2];
-  resp_buff[3] = bytestemp[3];
-  delete bytestemp;
+void sendKeepAliveAck() {
+  uint8_t response[] = {0x00,0x00,0x01,0x00,0x05};
+  wClient.write(response,sizeof(response));
 }
 
-void loadhumi(uint8_t* resp_buff){
-  uint8_t* byteshumi;
-  byteshumi = new uint8_t[4];
-  *byteshumi = temp;
-  resp_buff[4] = byteshumi[0];
-  resp_buff[5] = byteshumi[1];
-  resp_buff[6] = byteshumi[2];
-  resp_buff[7] = byteshumi[3];
-  delete byteshumi;
+void sendHWID() {
+  uint16_t hwid = HWID;
+  uint8_t hwid_1 = (hwid >> 8);
+  uint8_t hwid_2 = hwid & 0xff;
+
+  uint8_t response[] = {0x00,0x00,0x03,0x00,0x07,hwid_1,hwid_2};
+  wClient.write(response,sizeof(response));
 }
+
+void sendStatus(){
+  uint8_t* humi_bytes;
+  humi_bytes = new uint8_t[4];
+  uint8_t* temp_bytes;
+  temp_bytes = new uint8_t[4];
+
+  *humi_bytes = humi;
+  *temp_bytes = temp;
+
+  uint8_t response[] = {
+    0x00,0x00,0x03,0x00,0x19, // TODO verify length
+    0x80,0x00,0x01,0x00,0x0a,0x01, temp_bytes[0],temp_bytes[1],temp_bytes[2],temp_bytes[3],
+    0x80,0x00,0x02,0x00,0x0a,0x01, humi_bytes[0],humi_bytes[1],humi_bytes[2],humi_bytes[3]
+  };
+  delete[] humi_bytes;
+  delete[] temp_bytes;
+
+  wClient.write(response,sizeof(response));  
+}
+
+
 
 void receive_data(){
-  uint8_t recv_buff[2];
-  uint8_t* resp_buff;
-  wClient.read(recv_buff,sizeof(recv_buff));
-  switch(recv_buff[0]){
-    case REQUEST_WHO:
-      resp_buff = new uint8_t[2];
-      resp_buff[0] = RESPONSE_WHO;
-      resp_buff[1] = RESPONSE_ACKNOWLEDGED;
-      wClient.write((uint8_t*)&resp_buff,sizeof(resp_buff));
-      break;
-    case REQUEST_STATUS:
-      resp_buff = new uint8_t[9];
-      loadtemp(resp_buff);
-      loadhumi(resp_buff);
-      resp_buff[8] = RESPONSE_ACKNOWLEDGED;
-      wClient.write((uint8_t*)&resp_buff,sizeof(resp_buff));
-      break;
+  uint8_t recv_buff[5];
+
+  if(wClient.read(recv_buff, sizeof(recv_buff)) != sizeof(recv_buff)){
+    // handle error?
+    return;
   }
-  delete resp_buff;
+
+  uint16_t msg_type = (recv_buff[1] << 8) | recv_buff[2];
+  uint16_t msg_len = (recv_buff[3] << 8) | recv_buff[4];
+
+  if(msg_len == 5){
+    switch(msg_type){
+      case KEEPALIVE:
+        sendKeepAliveAck();
+        break;
+      case WHO_REQUEST:
+        sendHWID();
+        break;
+
+      case STATUS_REQUEST:
+        sendStatus();
+      break;
+    }
+  }else{
+
+  }
 }
 
 

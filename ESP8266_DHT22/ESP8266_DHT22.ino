@@ -27,7 +27,8 @@ const short master_port = 12023;
 // bytes 1 - 2 type
 // bytes 3 - 4 length
 // bytes 5 - id of sensor
-// bytes 6 - 9 - sensor data (humi/temp)
+// bytes 6 - data type
+// bytes 7 - 10 - sensor data (humi/temp)
 
 #define DHTPIN 5
 
@@ -99,9 +100,9 @@ void sendStatus(){
   *temp_bytes = temp;
 
   uint8_t response[] = {
-    0x00,0x00,0x03,0x00,0x19, // TODO verify length
-    0x80,0x00,0x01,0x00,0x0a,0x01, temp_bytes[0],temp_bytes[1],temp_bytes[2],temp_bytes[3],
-    0x80,0x00,0x02,0x00,0x0a,0x01, humi_bytes[0],humi_bytes[1],humi_bytes[2],humi_bytes[3]
+    0x00,0x00,0x03,0x00,0x1b, // TODO verify length
+    0x80,0x00,0x01,0x00,0x0b,0x01,0x00, temp_bytes[0],temp_bytes[1],temp_bytes[2],temp_bytes[3],
+    0x80,0x00,0x02,0x00,0x0b,0x01,0x00, humi_bytes[0],humi_bytes[1],humi_bytes[2],humi_bytes[3]
   };
   delete[] humi_bytes;
   delete[] temp_bytes;
